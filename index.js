@@ -175,7 +175,7 @@ app.get('/', (req, res) => {
     }
 
     function updateChart() {
-      fetch('/history').then r => r.json()).then(drawChart);
+      fetch('/history').then(r => r.json()).then(drawChart);
     }
 
     updateStats();
