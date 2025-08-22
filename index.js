@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { SerialPort } = require('serialport');
 const { ReadlineParser } = require('@serialport/parser-readline');
 const sqlite3 = require('sqlite3').verbose();
@@ -5,7 +6,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 
-const SERIAL_PORT = '/dev/ttyUSB0';
+const SERIAL_PORT = process.env.TTY_PORT || '/dev/ttyUSB0';
 const BAUD_RATE = 9600; // Adjust if needed
 
 // Ensure ./data directory exists
@@ -68,6 +69,23 @@ const serverStart = Date.now();
 app.get('/data', (req, res) => {
   if (latestData) {
     res.json(latestData);
+  } else {
+    res.status(404).json({ error: 'No data yet' });
+  }
+});
+
+// Add separate REST APIs for temperature and humidity
+app.get('/temperature', (req, res) => {
+  if (latestData && typeof latestData.temperature === 'number') {
+    res.json({ temperature: latestData.temperature });
+  } else {
+    res.status(404).json({ error: 'No data yet' });
+  }
+});
+
+app.get('/humidity', (req, res) => {
+  if (latestData && typeof latestData.humidity === 'number') {
+    res.json({ humidity: latestData.humidity });
   } else {
     res.status(404).json({ error: 'No data yet' });
   }
