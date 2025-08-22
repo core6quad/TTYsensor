@@ -13,3 +13,4 @@ works only under linux for now.
 4. make a .env file that looks like .env.example but contains a path to the serial port
 5. edit docker-compose.yml to pass your serial device
 6. docker compose up
+7. visit your-ip:3000
