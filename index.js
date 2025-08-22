@@ -43,6 +43,7 @@ parser.on('data', line => {
         humidity: data.humidity,
         timestamp: new Date()
       };
+      console.log('Received data:', latestData);
     }
   } catch (e) {
     // Ignore parse errors
@@ -174,7 +175,7 @@ app.get('/', (req, res) => {
     }
 
     function updateChart() {
-      fetch('/history').then(r => r.json()).then(drawChart);
+      fetch('/history').then r => r.json()).then(drawChart);
     }
 
     updateStats();
