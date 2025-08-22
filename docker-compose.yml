@@ -1,0 +1,15 @@
+version: "3.8"
+services:
+  ttysense:
+    build: .
+    container_name: ttysense
+    environment:
+      - TTY_PORT=/dev/ttyUSB1
+    volumes:
+      - ./data:/app/data
+      - ./node_modules:/app/node_modules
+    ports:
+      - "3000:3000"
+    devices:
+      - "/dev/ttyUSB1:/dev/ttyUSB1"
+    restart: unless-stopped
