@@ -5,6 +5,8 @@ const sqlite3 = require('sqlite3').verbose();
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
+const WebSocket = require('ws');
 
 const SERIAL_PORT = process.env.TTY_PORT || '/dev/ttyUSB0';
 const BAUD_RATE = 9600; // Adjust if needed
@@ -45,6 +47,7 @@ parser.on('data', line => {
         timestamp: new Date()
       };
       console.log('Received data:', latestData);
+      broadcastWS({ type: 'data', data: latestData });
     }
   } catch (e) {
     // Ignore parse errors
@@ -63,9 +66,39 @@ setInterval(() => {
 
 // Express server
 const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
 const serverStart = Date.now();
 
+let wsClients = [];
+
+wss.on('connection', (ws) => {
+  wsClients.push(ws);
+  ws.on('close', () => {
+    wsClients = wsClients.filter(client => client !== ws);
+  });
+  // Send initial data
+  if (latestData) {
+    ws.send(JSON.stringify({ type: 'data', data: latestData }));
+  }
+});
+
+// Broadcast helper
+function broadcastWS(msg) {
+  wsClients.forEach(ws => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(msg));
+    }
+  });
+}
+
+// Send uptime every second via WS
+setInterval(() => {
+  broadcastWS({ type: 'uptime', uptime: Date.now() - serverStart });
+}, 1000);
+
+// Express routes
 app.get('/data', (req, res) => {
   if (latestData) {
     res.json(latestData);
@@ -141,39 +174,31 @@ app.get('/', (req, res) => {
       return h + "h " + m + "m " + s + "s";
     }
 
-    function updateStats() {
-      fetch('/data').then(r => r.json()).then(data => {
-        document.getElementById('temp').textContent = data.temperature ?? '-';
-        document.getElementById('hum').textContent = data.humidity ?? '-';
-      }).catch(() => {
-        document.getElementById('temp').textContent = '-';
-        document.getElementById('hum').textContent = '-';
-      });
-      document.getElementById('uptime').textContent = formatUptime(Date.now() - ${serverStart});
-    }
-
     let chart;
-    function drawChart(history) {
-      const labels = history.map(r => new Date(r.created_at).toLocaleTimeString());
-      const temps = history.map(r => r.temperature);
-      const hums = history.map(r => r.humidity);
+    let chartData = {
+      labels: [],
+      temps: [],
+      hums: []
+    };
+
+    function drawChart() {
       const ctx = document.getElementById('historyChart').getContext('2d');
       if (chart) chart.destroy();
       chart = new Chart(ctx, {
         type: 'line',
         data: {
-          labels,
+          labels: chartData.labels,
           datasets: [
             {
               label: 'Temperature (°C)',
-              data: temps,
+              data: chartData.temps,
               borderColor: 'red',
               fill: false,
               yAxisID: 'y',
             },
             {
               label: 'Humidity (%)',
-              data: hums,
+              data: chartData.hums,
               borderColor: 'blue',
               fill: false,
               yAxisID: 'y1',
@@ -192,20 +217,48 @@ app.get('/', (req, res) => {
       });
     }
 
-    function updateChart() {
-      fetch('/history').then(r => r.json()).then(drawChart);
-    }
+    // Initial fetch for 24h history
+    fetch('/history').then(r => r.json()).then(history => {
+      chartData.labels = history.map(r => new Date(r.created_at).toLocaleTimeString());
+      chartData.temps = history.map(r => r.temperature);
+      chartData.hums = history.map(r => r.humidity);
+      drawChart();
+    });
 
-    updateStats();
-    updateChart();
-    setInterval(updateStats, 5000);
-    setInterval(updateChart, 60000);
+    // WebSocket for live updates
+    const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+
+    ws.onmessage = function(event) {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'data') {
+        document.getElementById('temp').textContent = msg.data.temperature ?? '-';
+        document.getElementById('hum').textContent = msg.data.humidity ?? '-';
+        // Add to chart if timestamp is new
+        const now = new Date(msg.data.timestamp);
+        const label = now.toLocaleTimeString();
+        if (chartData.labels.length === 0 || chartData.labels[chartData.labels.length - 1] !== label) {
+          chartData.labels.push(label);
+          chartData.temps.push(msg.data.temperature);
+          chartData.hums.push(msg.data.humidity);
+          // Keep only last 24h (assuming 5s interval, ~17280 points, but let's keep 300 for browser)
+          if (chartData.labels.length > 300) {
+            chartData.labels.shift();
+            chartData.temps.shift();
+            chartData.hums.shift();
+          }
+          drawChart();
+        }
+      }
+      if (msg.type === 'uptime') {
+        document.getElementById('uptime').textContent = formatUptime(msg.uptime);
+      }
+    };
   </script>
 </body>
 </html>
   `);
 });
 
-app.listen(3000, () => {
+server.listen(3000, () => {
   console.log('Server running on http://localhost:3000');
 });
