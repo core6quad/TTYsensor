@@ -14,3 +14,5 @@ works only under linux for now.
 5. edit docker-compose.yml to pass your serial device
 6. docker compose up
 7. visit your-ip:3000
+
+this project is functional but archived because it's probably isnt really useful and i'm abandoning it
